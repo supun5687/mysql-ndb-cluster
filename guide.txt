@@ -1,0 +1,307 @@
+
+
++++++++++++++++++ Download and install packages++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+OS==>>
+
+Distributor ID: Ubuntu
+Description:    Ubuntu 20.04.6 LTS
+Release:        20.04
+Codename:       focal
+
+
+
+supun_aby@cluster-node-1:~$ lsb_release -a
+No LSB modules are available.
+Distributor ID: Ubuntu
+Description:    Ubuntu 23.10
+Release:        23.10
+Codename:       mantic
+------------------------------------------------------------------------
+
+
+sudo apt-get update
+sudo apt-get upgrade
+
+data nodes
+////////////////////////////////////////////////////////////////
+
+sudo apt-get install libclass-methodmaker-perl
+sudo apt-get install libaio1 libmecab2
+
+sudo apt-get install libnuma1
+
+
+
+from mysql cluster software page ==>
+
+mysql-cluster-community-data-node
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-cluster-community-data-node_8.2.0-1ubuntu23.10_amd64.deb
+------------------------------------------
+
+mysql-common
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-common_8.2.0-1ubuntu23.10_amd64.deb
+-------------------------------------------------
+
+mysql-cluster-community-client-core
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-cluster-community-client-core_8.2.0-1ubuntu23.10_amd64.deb
+--------------------------------------------------------
+
+mysql-cluster-community-client
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-cluster-community-client_8.2.0-1ubuntu23.10_amd64.deb
+--------------------------------------------------------------------
+
+mysql-client
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-client_8.2.0-1ubuntu23.10_amd64.deb
+---------------------------------------------------------------
+
+mysql-cluster-community-server-core
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-cluster-community-server-core_8.2.0-1ubuntu23.10_amd64.deb
+---------------------------------------------------------------
+
+mysql-cluster-community-server
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-cluster-community-server_8.2.0-1ubuntu23.10_amd64.deb
+--------------------------------------------------------------------
+
+mysql-server
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-server_8.2.0-1ubuntu23.10_amd64.deb
+----------------------------------------------------------------------------------------------
+
+
+
+
+
+****
+error handlening 
+mysql-cluster-community-client-plugins
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-cluster-community-client-plugins_8.2.0-1ubuntu23.10_amd64.deb
+
+sudo apt-get install libnuma1
+
+
+management nodes
+/////////////////////////////////////////////
+
+
+mysql-cluster-community-management-server
+
+wget https://dev.mysql.com/get/Downloads/MySQL-Cluster-8.2/mysql-cluster-community-management-server_8.2.0-1ubuntu23.10_amd64.deb
+------------------------------------------------------
+
+
+Install deb files
+
+sudo dpkg -i <file_Name>
+
+
+
++++++++++++++++++++++++++++++++++++ Configuring cluster +++++++++++++++++++++++++++++++++++++++++++++++
+IP-ADRESSES
+==============
+cluster-node-1 - 10.182.0.7 / 34.125.19.177
+cluster-node-2 - 10.182.0.8 / 34.16.189.22
+management-node - 10.182.0.9 / 34.125.242.252
+
+=======================================DATA-NODE CONFIG=======================================================================================
+
+On data-node-1 /2
+----------------------------------------
+
+create the following configuration on both data nodes
+
+sudo vim /etc/my.cnf  <-- for data node
+
+[mysql_cluster]
+ndb-connectstring=<management-node-ip>
+
+[mysql_cluster]
+ndb-connectstring=10.182.0.9
+
+
+***check this configuration from "ndbd" command.  will get following.
+	ERROR: Unable to connect with connect string: nodeid=0,10.182.0.9:1186
+	Retrying every 5 seconds. Attempts left: 12 11 10 9 8 7 6 5 4 3 2 1, failed.
+	
+
+create a directory in data-nodes 
+-----------------------------------------------------------
+On both data-nodes-->
+
+sudo mkdir -p /usr/local/mysql/data
+
+
+-----------creating ndbd.service files------
+
+sudo vim /etc/systemd/system/ndbd.service
+
+[Unit]
+Description=MySQL NDB Data Node Daemon
+After=network.target.auditd.service
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/ndbd
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+then to enable the service --> sudo systemctl enable ndbd
+
+then to reload the daemon -->  sudo systemctl daemon-reload
+
+
+--------------edit the configuration related to mysql api-------------------------
+
+sudo vi /etc/mysql/my.cnf <-- for mysql server
+
+[mysqlId]
+ndbcluster
+ndb-connectstring=<management-node-ip>
+
+[mysql_cluster]
+ndb-connectstring=<management-node-ip>
+
+[mysqlId]
+ndbcluster
+ndb-connectstring=10.182.0.9
+
+[mysql_cluster]
+ndb-connectstring=10.182.0.9
+
+
+==================Management-Node-config==================================================================
+
+create a directory in management node
+---------------------------------------------------
+sudo mkdir -p /usr/mysql-cluster
+
+create the config.ini file
+-----------------------------------------
+sudo vim /usr/mysql-cluster/config.ini
+
+--------------config.ini------------------
+
+[ndbd default]
+NoOfReplicas=2
+
+[ndb_mgnd]
+hostname=10.182.0.9
+datadir=/usr/mysql-cluster
+NodeId=1
+
+[ndbd]
+hostname=10.182.0.7
+NodeId=11
+datadir=/usr/local/mysql/data
+
+[ndbd]
+hostname=10.182.0.8
+NodeId=12
+datadir=/usr/local/mysql/data
+
+[mysqld]
+hostname=10.182.0.7
+NodeId=21
+
+[mysqld]
+hostname=10.182.0.8
+NodeId=22
+
+--------------------------------------------------------
+
+++++   create ndb_mgnd.service  ++++++++++++++++++++++++++
+
+create the service file
+--------------------------------
+sudo vim /etc/systemd/system/ndb_mgmd.service
+
+---------------------  ndb_mgmd.service  ---------------------
+
+[Unit]
+Description=MySQL NDB Cluster Management Server
+After=network.target.auditd.service
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/ndb_mgmd -f /usr/mysql-cluster/config.ini
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+---------------------------------------------------------------
+
+enable
+------------
+sudo systemctl enable ndb_mgmd
+
+reload
+---------------------------
+sudo systemctl daemon-reload
+
+Initalize after any changes
+--------------------------------------
+
+sudo ndb_mgmd --initial --config-file=/usr/mysql-cluster/config.ini
+
+if it success get the response as follows
+
+"MySQL Cluster Management Server mysql-8.2.0 ndb-8.2.0"
+
+######### verify the cluster intialize configuration ################33
+
+Use the following commands in each data node and get response like follows
+
+ndb_mgm -e show
+------
+supun_aby@cluster-node-1:~$ ndb_mgm -e show
+Connected to Management Server at: 10.182.0.9:1186
+Cluster Configuration
+---------------------
+[ndbd(NDB)]     2 node(s)
+id=11 (not connected, accepting connect from 10.182.0.7)
+id=12 (not connected, accepting connect from 10.182.0.8)
+
+[ndb_mgmd(MGM)] 1 node(s)
+id=1    @10.182.0.9  (mysql-8.2.0 ndb-8.2.0)
+
+[mysqld(API)]   2 node(s)
+id=21 (not connected, accepting connect from 10.182.0.7)
+id=22 (not connected, accepting connect from 10.182.0.8)
+------
+sudo ndbd
+-----
+supun_aby@cluster-node-1:~$ sudo ndbd
+2023-11-26 03:19:23 [ndbd] INFO     -- Angel connected to '10.182.0.9:1186'
+2023-11-26 03:19:35 [ndbd] INFO     -- Angel allocated nodeid: 11
+----------
+
+configurations we done were not reflected to data nodes so we get like this,
+ 
+id=11 (not connected, accepting connect from 10.182.0.7)
+
+so we have to restart the mysql service in data nodes
+
+sudo service mysql restart
+
+
+
+
+====log files in data nodes ===========
+
+/usr/local/mysql/data
+/var/log/mysql
